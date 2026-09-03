@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicoulaj/tauri/v2/tooling/cli/schema.json",
+  "productName": "Q-DESK",
+  "identifier": "com.qdesk.app",
+  "version": "0.1.0",
+  "build": {
+    "beforeDevCommand": {
+      "cwd": "../src",
+      "script": "npm run dev"
+    },
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": {
+      "cwd": "../src",
+      "script": "npm run build"
+    },
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Q-DESK",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {}
+  }
+}

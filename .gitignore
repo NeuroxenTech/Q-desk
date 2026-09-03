@@ -1,0 +1,30 @@
+# Environment
+.env
+# Dependencies
+node_modules/
+
+# Rust / Tauri build artifacts
+target/
+src-tauri/target/
+
+# Next.js
+.next/
+out/
+
+# Go build artifacts
+backend/backend
+backend/backend.exe
+backend/qdesk_backend.exe
+backend/*.exe
+backend/*.exe~
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# ML-DSA keys (never commit private keys)
+mldsa_private.key
+mldsa_public.key
+*.key
+
+# Logs
+*.log
