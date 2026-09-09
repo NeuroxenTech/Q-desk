@@ -17,32 +17,44 @@ type Config struct {
 	ListenAddr         string
 	AllowedOrigins     []string
 
+	// DownloadRequestTTLHours is the approval window for a chain-of-custody
+	// download request (DOWNLOAD_REQUEST_TTL_HOURS, default 48). A request
+	// that does not reach the required approval count within this window is
+	// marked 'expired' and cannot be decided on or executed.
+	DownloadRequestTTLHours int
+
 	// Evidence uploads are stored in a private Supabase Storage bucket. The
 	// service role key is required to create the bucket and issue short-lived
 	// signed URLs; without it the upload endpoints answer 503.
-	SupabaseURL           string
-	SupabaseServiceKey    string
-	MaxUploadSizeMB       int64
-	MalwareScanEnabled    bool
+	SupabaseURL        string
+	SupabaseServiceKey string
+	MaxUploadSizeMB    int64
+	MalwareScanEnabled bool
 }
 
 // loadConfig reads all required configuration from the environment.
 func loadConfig() *Config {
 	cfg := &Config{
-		RedisURL:           os.Getenv("UPSTASH_REDIS_URL"),
-		DatabaseURL:        os.Getenv("SUPABASE_DATABASE_URL"),
-		MLDSAPrivateKeyEnv: os.Getenv("MLDSA_SERVER_PRIVATE_KEY"),
-		MLDSAPublicKeyEnv:  os.Getenv("MLDSA_SERVER_PUBLIC_KEY"),
-		TicketTTLSeconds:   600,
-		ListenAddr:         ":8080",
-		SupabaseURL:        strings.TrimSpace(os.Getenv("SUPABASE_URL")),
-		SupabaseServiceKey: strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY")),
-		MaxUploadSizeMB:    50,
-		MalwareScanEnabled: os.Getenv("MALWARE_SCAN_ENABLED") == "true",
+		RedisURL:                os.Getenv("UPSTASH_REDIS_URL"),
+		DatabaseURL:             os.Getenv("SUPABASE_DATABASE_URL"),
+		MLDSAPrivateKeyEnv:      os.Getenv("MLDSA_SERVER_PRIVATE_KEY"),
+		MLDSAPublicKeyEnv:       os.Getenv("MLDSA_SERVER_PUBLIC_KEY"),
+		TicketTTLSeconds:        600,
+		ListenAddr:              ":8080",
+		SupabaseURL:             strings.TrimSpace(os.Getenv("SUPABASE_URL")),
+		SupabaseServiceKey:      strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY")),
+		MaxUploadSizeMB:         50,
+		MalwareScanEnabled:      os.Getenv("MALWARE_SCAN_ENABLED") == "true",
+		DownloadRequestTTLHours: 48,
 	}
 	if v := os.Getenv("TICKET_TTL_SECONDS"); v != "" {
 		if n, err := parseIntDefault(v, 600); err == nil {
 			cfg.TicketTTLSeconds = n
+		}
+	}
+	if v := os.Getenv("DOWNLOAD_REQUEST_TTL_HOURS"); v != "" {
+		if n, err := parseIntDefault(v, 48); err == nil && n > 0 {
+			cfg.DownloadRequestTTLHours = n
 		}
 	}
 	if v := os.Getenv("MAX_UPLOAD_SIZE_MB"); v != "" {

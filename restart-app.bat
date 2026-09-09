@@ -15,6 +15,15 @@ taskkill /IM q-desk.exe /F >nul 2>&1
 echo [2/5] Restarting backend...
 taskkill /IM qdesk_backend.exe /F >nul 2>&1
 ping -n 2 127.0.0.1 >nul
+rem Rebuild the backend first so a stale qdesk_backend.exe never ships old routes.
+pushd "%ROOT%\backend"
+go build -o qdesk_backend.exe .
+if errorlevel 1 (
+  echo      BUILD FAILED - backend NOT started. Fix the Go build error, then rerun.
+  popd
+  goto :eof
+)
+popd
 rem Load .env into this process so the backend inherits it.
 if exist "%ROOT%\.env" (
   for /f "usebackq tokens=1,* delims==" %%a in ("%ROOT%\.env") do (

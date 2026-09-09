@@ -12,6 +12,31 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// routes registers every HTTP endpoint. Kept as a method (instead of inline
+// HandleFunc calls in main) so the router wiring can be exercised by tests.
+func (a *app) routes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/handshake", a.handleHandshake)
+	mux.HandleFunc("/api/ticket/request", a.handleTicketRequest)
+	mux.HandleFunc("/api/stream", a.handleStream)
+	mux.HandleFunc("/api/append", a.handleAppend)
+	mux.HandleFunc("/api/breach", a.handleBreach)
+	mux.HandleFunc("/api/versions", a.handleVersions)
+	mux.HandleFunc("/api/versions/branch", a.handleBranch)
+	mux.HandleFunc("/api/versions/merge", a.handleMerge)
+	mux.HandleFunc("/api/versions/{documentId}/tree", a.handleVersionTree)
+	mux.HandleFunc("/api/upload", a.handleUpload)
+	mux.HandleFunc("/api/files/{versionID}/download-url", a.handleDownloadURL)
+	mux.HandleFunc("/api/files/{versionID}/content", a.handleFileContent)
+	mux.HandleFunc("/api/stream/versions", a.handleStreamVersions)
+	mux.HandleFunc("/api/cases", a.handleCases)
+
+	mux.HandleFunc("/api/downloads/request", a.handleDownloadRequest)
+	mux.HandleFunc("/api/downloads/pending", a.handlePendingDownloads)
+	mux.HandleFunc("/api/downloads", a.handleDownloadsList)
+	mux.HandleFunc("/api/downloads/{requestID}/decide", a.handleDownloadDecide)
+	mux.HandleFunc("/api/downloads/{requestID}/execute", a.handleDownloadExecute)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -67,19 +92,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/handshake", app.handleHandshake)
-	mux.HandleFunc("/api/ticket/request", app.handleTicketRequest)
-	mux.HandleFunc("/api/stream", app.handleStream)
-	mux.HandleFunc("/api/append", app.handleAppend)
-	mux.HandleFunc("/api/breach", app.handleBreach)
-	mux.HandleFunc("/api/versions", app.handleVersions)
-	mux.HandleFunc("/api/versions/branch", app.handleBranch)
-	mux.HandleFunc("/api/versions/merge", app.handleMerge)
-	mux.HandleFunc("/api/versions/{documentId}/tree", app.handleVersionTree)
-	mux.HandleFunc("/api/upload", app.handleUpload)
-	mux.HandleFunc("/api/files/{versionID}/download-url", app.handleDownloadURL)
-	mux.HandleFunc("/api/files/{versionID}/content", app.handleFileContent)
-	mux.HandleFunc("/api/stream/versions", app.handleStreamVersions)
+	app.routes(mux)
 
 	srv := &http.Server{
 		Addr:         cfg.ListenAddr,

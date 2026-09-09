@@ -489,7 +489,7 @@ func (a *app) ingestEvidenceFile(ctx context.Context, tempPath, originalFilename
 	if err != nil {
 		return nil, scanStatus, err
 	}
-	if err := a.stg.uploadObject(ctx, key, mime, file); err != nil {
+	if err := a.stg.uploadObject(ctx, evidenceBucket, key, mime, file); err != nil {
 		file.Close()
 		return nil, scanStatus, err
 	}

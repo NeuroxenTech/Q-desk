@@ -19,6 +19,11 @@ import (
 // URLs issued by GET /api/files/{version_id}/download-url.
 const evidenceBucket = "evidence-files"
 
+// exportBucket holds chain-of-custody download packages (evidence ZIP +
+// certificate). It is kept separate from evidenceBucket so the evidence bucket
+// keeps its strict MIME allowlist while zip packages land in their own bucket.
+const exportBucket = "qdesk-exports"
+
 // storageClient is a thin HTTP client for the Supabase Storage API. It talks
 // to the authenticated (service-role) endpoints only; no public anon access is
 // used anywhere in the upload flow.
@@ -62,18 +67,34 @@ func (sc *storageClient) maxBytes() int64 {
 	return sc.maxUploadMB * 1024 * 1024
 }
 
-// ensureBucket creates the private evidence bucket if it does not exist.
-// The file_size_limit and allowed_mime_types mirror the API-level policy so the
-// storage layer enforces the same bounds.
+// ensureBucket creates the private buckets if they do not exist: evidenceBucket
+// restricted to the evidence upload MIME allowlist, and exportBucket restricted
+// to zip packages. The file_size_limit and allowed_mime_types mirror the
+// API-level policy so the storage layer enforces the same bounds.
 func (sc *storageClient) ensureBucket(ctx context.Context) error {
+	for _, b := range []struct {
+		name string
+		mime []string
+	}{
+		{evidenceBucket, allowedUploadTypes()},
+		{exportBucket, []string{"application/zip"}},
+	} {
+		if err := sc.ensureOneBucket(ctx, b.name, b.mime); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sc *storageClient) ensureOneBucket(ctx context.Context, name string, mimeTypes []string) error {
 	if !sc.ready() {
 		return nil
 	}
 	body, _ := json.Marshal(map[string]any{
-		"name":               evidenceBucket,
+		"name":               name,
 		"public":             false,
 		"file_size_limit":    sc.maxBytes(),
-		"allowed_mime_types": allowedUploadTypes(),
+		"allowed_mime_types": mimeTypes,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sc.baseURL+"/storage/v1/bucket", bytes.NewReader(body))
 	if err != nil {
@@ -86,7 +107,7 @@ func (sc *storageClient) ensureBucket(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("storage: created private bucket %q", evidenceBucket)
+		log.Printf("storage: created private bucket %q", name)
 		return nil
 	}
 	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -104,11 +125,11 @@ func (sc *storageClient) ensureBucket(ctx context.Context) error {
 	return fmt.Errorf("storage: create bucket returned %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 }
 
-// uploadObject stores the evidence bytes under key in the private bucket.
+// uploadObject stores the bytes under key in the given private bucket.
 // The x-upsert header makes a retry after a mid-upload failure idempotent.
-func (sc *storageClient) uploadObject(ctx context.Context, key, contentType string, r io.Reader) error {
+func (sc *storageClient) uploadObject(ctx context.Context, bucket, key, contentType string, r io.Reader) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
-		sc.baseURL+"/storage/v1/object/"+storageObjectPath(evidenceBucket, key), r)
+		sc.baseURL+"/storage/v1/object/"+storageObjectPath(bucket, key), r)
 	if err != nil {
 		return err
 	}
@@ -127,23 +148,25 @@ func (sc *storageClient) uploadObject(ctx context.Context, key, contentType stri
 	return fmt.Errorf("storage: upload failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 }
 
-// signedURL returns a short-lived, pre-signed download URL for an object key.
-// The token expires after expiresIn seconds — never persist or redirect to it
-// longer than that. Typical usage is 60s so the browser can start the stream.
+// signedURL returns a short-lived, pre-signed URL for an object key. When
+// download is true the token instructs the browser to save the object instead
+// of rendering it. The token expires after expiresIn seconds — never persist or
+// redirect to it longer than that. Typical usage is 60s so the browser can
+// start the stream.
 //
 // Recent Supabase Storage versions no longer accept the old
 // POST /object/sign/{bucket}/{key} + {"expiresIn"} form and respond with 400
 // "body must have required property 'paths'". The bulk endpoint
 // POST /object/sign/{bucket} + {"paths":[...]} is answered by both new and
 // compatible hosts, so it is used unconditionally.
-func (sc *storageClient) signedURL(ctx context.Context, key string, expiresIn int) (string, error) {
+func (sc *storageClient) signedURL(ctx context.Context, bucket, key string, expiresIn int, download bool) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"paths":     []string{key},
 		"expiresIn": expiresIn,
-		"download":  false,
+		"download":  download,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		sc.baseURL+"/storage/v1/object/sign/"+url.PathEscape(evidenceBucket), bytes.NewReader(body))
+		sc.baseURL+"/storage/v1/object/sign/"+url.PathEscape(bucket), bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -168,7 +191,10 @@ func (sc *storageClient) signedURL(ctx context.Context, key string, expiresIn in
 	if out[0].Error != "" {
 		return "", fmt.Errorf("storage: sign error: %s", out[0].Error)
 	}
-	return sc.baseURL + out[0].SignedURL, nil
+	// The sign response returns a path like "/object/sign/{bucket}/{key}?token=…".
+	// Signed-object access is served under the /storage/v1 prefix (bare
+	// /object/sign/… answers 404 "requested path is invalid").
+	return sc.baseURL + "/storage/v1" + out[0].SignedURL, nil
 }
 
 // openObject GETs an object from the private bucket using the service key and
