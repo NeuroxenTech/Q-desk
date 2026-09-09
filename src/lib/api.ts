@@ -9,6 +9,12 @@ import type {
   VersionTreeResponse,
   BranchResponse,
   MergeResponse,
+  DownloadRequestResponse,
+  PendingDownloadsResponse,
+  DownloadsListResponse,
+  DownloadDecideResponse,
+  DownloadExecuteResponse,
+  CaseListResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -336,4 +342,147 @@ export async function fetchFileBytes(url: string): Promise<Blob> {
     throw new Error(`Content fetch failed: ${res.status}`);
   }
   return res.blob();
+}
+
+// fetchCases loads the live assigned-case list (FIRs the officer has a
+// case_assignment for) with document title, classification and version count.
+export async function fetchCases(
+  sessionId: string,
+  badgeNumber: string
+): Promise<CaseListResponse> {
+  const params = new URLSearchParams({
+    session_id: sessionId,
+    badge_number: badgeNumber,
+  });
+  const res = await fetch(`${API_URL}/api/cases?${params.toString()}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Cases request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Chain-of-custody download requests.
+// ---------------------------------------------------------------------------
+
+// requestDownload submits a dual-approval download request for a document.
+export async function requestDownload(
+  sessionId: string,
+  badgeNumber: string,
+  documentId: string,
+  reason: string
+): Promise<DownloadRequestResponse> {
+  const res = await fetch(`${API_URL}/api/downloads/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      badge_number: badgeNumber,
+      document_id: documentId,
+      reason,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Download request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// fetchPendingDownloads lists requests waiting on this official's decision
+// (SHO_SUPERVISOR / SYSTEM_ADMIN only; the page degrades to just the
+// requester history for investigating officers).
+export async function fetchPendingDownloads(
+  sessionId: string,
+  badgeNumber: string
+): Promise<PendingDownloadsResponse> {
+  const params = new URLSearchParams({
+    session_id: sessionId,
+    badge_number: badgeNumber,
+  });
+  const res = await fetch(
+    `${API_URL}/api/downloads/pending?${params.toString()}`,
+    { method: "GET", headers: { "Content-Type": "application/json" } }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Pending downloads request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// fetchDownloads loads the Downloads page payload: the officer's own request
+// history plus (for approvers) the requests awaiting their decision.
+export async function fetchDownloads(
+  sessionId: string,
+  badgeNumber: string
+): Promise<DownloadsListResponse> {
+  const params = new URLSearchParams({
+    session_id: sessionId,
+    badge_number: badgeNumber,
+  });
+  const res = await fetch(`${API_URL}/api/downloads?${params.toString()}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Downloads request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// decideDownload records this official's signed decision on a request.
+export async function decideDownload(
+  sessionId: string,
+  badgeNumber: string,
+  requestId: string,
+  decision: "approved" | "rejected"
+): Promise<DownloadDecideResponse> {
+  const res = await fetch(
+    `${API_URL}/api/downloads/${encodeURIComponent(requestId)}/decide`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        badge_number: badgeNumber,
+        decision,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Download decision failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// executeDownload builds and signs the evidence package (certificate + ZIP) and
+// returns a short-lived signed URL the browser should follow immediately.
+export async function executeDownload(
+  sessionId: string,
+  badgeNumber: string,
+  requestId: string
+): Promise<DownloadExecuteResponse> {
+  const res = await fetch(
+    `${API_URL}/api/downloads/${encodeURIComponent(requestId)}/execute`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        badge_number: badgeNumber,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Download execute failed: ${res.status}`);
+  }
+  return res.json();
 }

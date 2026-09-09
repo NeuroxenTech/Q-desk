@@ -91,6 +91,7 @@ cargo tauri dev
 | `MLDSA_SERVER_PRIVATE_KEY` | ML-DSA private key for PQC signing |
 | `MLDSA_SERVER_PUBLIC_KEY` | ML-DSA public key for verification |
 | `TICKET_TTL_SECONDS` | Ticket time-to-live in seconds (default: 600) |
+| `DOWNLOAD_REQUEST_TTL_HOURS` | Approval window (hours) for a chain-of-custody download request; unapproved requests auto-expire (default: 48) |
 | `SUPABASE_URL` | Storage REST URL (defaults to the project inferred from `SUPABASE_DATABASE_URL`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for the private `evidence-files` bucket (required for uploads) |
 | `MAX_UPLOAD_SIZE_MB` | Evidence upload cap in MB (default: 100) |

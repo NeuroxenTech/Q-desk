@@ -10,26 +10,16 @@ import SecondaryButton from "@/components/ui/SecondaryButton";
 import ContentTypeIcon from "@/components/ui/ContentTypeIcon";
 import UploadEvidenceDialog from "@/components/UploadEvidenceDialog";
 import { useOfficerSession } from "@/lib/useOfficerSession";
-import { requestTicket, fetchVersions } from "@/lib/api";
+import { requestTicket, fetchVersions, fetchCases } from "@/lib/api";
 import { canUploadEvidence } from "@/lib/content";
-import type { UploadDraft, UploadResponse } from "@/lib/types";
-
-interface CaseRow {
-  fir: string;
-  title: string;
-  category: string;
-  status: "Active" | "Closed";
-}
-
-const CASES: CaseRow[] = [
-  { fir: "FIR-2026-0089", title: "Active Investigation", category: "Criminal", status: "Active" },
-];
+import type { CaseListItem, UploadDraft, UploadResponse } from "@/lib/types";
 
 export default function CasesPage() {
   const router = useRouter();
   const { loading, badge, role, sessionId } = useOfficerSession();
   const [requesting, setRequesting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cases, setCases] = useState<CaseListItem[]>([]);
   const [contentTypes, setContentTypes] = useState<Record<string, string[]>>({});
   // Per-case version-tree summary (latest path + branch/merge counts) derived
   // from the kind carried by fetchVersions.
@@ -38,18 +28,38 @@ export default function CasesPage() {
   >({});
   const [versionError, setVersionError] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFir, setUploadFir] = useState<string>("");
 
   const uploadEligible = canUploadEvidence(role);
 
-  // Pull real version rows per case FIR to render content-type chips (the
-  // cases list itself is a static demo list; the version data is live).
+  // Pull the live assigned-case list, then real version rows per case FIR to
+  // render content-type chips + branch/merge summaries.
+  useEffect(() => {
+    if (!sessionId || !badge) return;
+    let cancelled = false;
+    fetchCases(sessionId, badge)
+      .then((resp) => {
+        if (cancelled) return;
+        setCases(resp.cases || []);
+        setError(null);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setError(err?.message || "Could not load your assigned cases.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, badge]);
+
   const loadTypes = async (fir: string) => {
     if (!sessionId || !badge) return;
     try {
       const resp = await fetchVersions(sessionId, badge, { firNumber: fir });
+      const versions = resp.versions || [];
       const types = Array.from(
         new Set(
-          resp.versions
+          versions
             .map((v) => v.content_type)
             .filter((t): t is string => !!t && t !== "text/plain")
         ).values()
@@ -58,13 +68,13 @@ export default function CasesPage() {
 
       // Version-tree summary: last mainline label plus branch/merge counts,
       // from the backend-computed kind field (e.g. "v5 · 2 branches, 1 merged").
-      const branches = resp.versions.filter((v) => v.kind === "branch").length;
-      const merged = resp.versions.filter((v) => v.kind === "merge").length;
+      const branches = versions.filter((v) => v.kind === "branch").length;
+      const merged = versions.filter((v) => v.kind === "merge").length;
       const latest =
-        resp.versions
+        versions
           .filter((v) => v.kind === "mainline")
           .sort((a, b) => b.version_number - a.version_number)[0]?.tree_path ||
-        resp.versions[0]?.tree_path ||
+        versions[0]?.tree_path ||
         "v1";
       setVersionStats((prev) => ({
         ...prev,
@@ -81,9 +91,9 @@ export default function CasesPage() {
 
   useEffect(() => {
     if (!sessionId || !badge) return;
-    for (const c of CASES) loadTypes(c.fir);
+    for (const c of cases) loadTypes(c.fir_number);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, badge, uploadOpen]);
+  }, [sessionId, badge, uploadOpen, cases]);
 
   // Open a case by requesting a signed access ticket, then handing it to the
   // evidence viewer. This is the evidence-access functionality that used to
@@ -142,7 +152,7 @@ export default function CasesPage() {
         <Card>
           <div className="section-head">
             <span className="section-title">FIR Cases</span>
-            <StatusBadge tone="success">{CASES.length} Assigned</StatusBadge>
+            <StatusBadge tone="success">{cases.length} Assigned</StatusBadge>
           </div>
           <div className="tbl-head grid-cols-[1fr_1.8fr_1fr_auto]">
             <span>FIR Number</span>
@@ -150,46 +160,49 @@ export default function CasesPage() {
             <span>Category</span>
             <span>Action</span>
           </div>
-          {CASES.length === 0 ? (
+          {cases.length === 0 ? (
             <p className="p-8 text-center text-sm text-slate-500">
-              No cases assigned to your badge.
+              {error
+                ? "Could not load cases — check the error above."
+                : "No cases assigned to your badge."}
             </p>
           ) : (
-            CASES.map((c) => (
+            cases.map((c) => (
               <div
-                key={c.fir}
+                key={c.fir_number}
                 className="tbl-row grid-cols-[1fr_1.8fr_1fr_auto]"
               >
-                <span className="font-mono text-sm text-blue-300">{c.fir}</span>
+                <span className="font-mono text-sm text-blue-300">{c.fir_number}</span>
                 <span>
                   <span className="text-sm text-slate-300">{c.title}</span>
-                  {versionStats[c.fir] && (
+                  {versionStats[c.fir_number] && (
                     <span className="mt-1.5 block font-mono text-[11px] text-slate-400">
-                      {versionStats[c.fir].latest}
-                      {versionStats[c.fir].branches > 0 &&
-                        ` · ${versionStats[c.fir].branches} branch${
-                          versionStats[c.fir].branches === 1 ? "" : "es"
+                      {versionStats[c.fir_number].latest}
+                      {versionStats[c.fir_number].branches > 0 &&
+                        ` · ${versionStats[c.fir_number].branches} branch${
+                          versionStats[c.fir_number].branches === 1 ? "" : "es"
                         }`}
-                      {versionStats[c.fir].merged > 0 &&
-                        ` · ${versionStats[c.fir].merged} merged`}
+                      {versionStats[c.fir_number].merged > 0 &&
+                        ` · ${versionStats[c.fir_number].merged} merged`}
                     </span>
                   )}
-                  {(contentTypes[c.fir] || []).length > 0 && (
+                  {(contentTypes[c.fir_number] || []).length > 0 && (
                     <span className="mt-1.5 flex flex-wrap gap-1.5">
-                      {(contentTypes[c.fir] || []).map((t) => (
+                      {(contentTypes[c.fir_number] || []).map((t) => (
                         <ContentTypeIcon key={t} mime={t} />
                       ))}
                     </span>
                   )}
                 </span>
-                <span className="text-sm text-slate-400">{c.category}</span>
+                <span className="text-sm text-slate-400">{c.classification_level}</span>
                 <div className="flex items-center justify-end gap-3">
-                  <StatusBadge tone={c.status === "Active" ? "success" : "default"}>
-                    {c.status}
-                  </StatusBadge>
+                  <StatusBadge tone="success">Active</StatusBadge>
                   {uploadEligible && (
                     <SecondaryButton
-                      onClick={() => setUploadOpen(true)}
+                      onClick={() => {
+                        setUploadFir(c.fir_number);
+                        setUploadOpen(true);
+                      }}
                       className="text-sm"
                       title="Upload a new evidence file to this case"
                     >
@@ -197,15 +210,11 @@ export default function CasesPage() {
                     </SecondaryButton>
                   )}
                   <PrimaryButton
-                    onClick={() => handleOpenCase(c.fir)}
+                    onClick={() => handleOpenCase(c.fir_number)}
                     className="text-sm"
-                    disabled={requesting === c.fir}
+                    disabled={requesting === c.fir_number}
                   >
-                    {requesting === c.fir
-                      ? "Opening…"
-                      : c.status === "Active"
-                        ? "Open Case"
-                        : "View Case"}
+                    {requesting === c.fir_number ? "Opening…" : "Open Case"}
                   </PrimaryButton>
                 </div>
               </div>
@@ -222,10 +231,13 @@ export default function CasesPage() {
 
       <UploadEvidenceDialog
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
+        onClose={() => {
+          setUploadOpen(false);
+          setUploadFir("");
+        }}
         sessionId={sessionId}
         badge={badge}
-        firNumber={CASES[0]?.fir || "FIR-2026-0089"}
+        firNumber={uploadFir}
         draft={{ isNewDocument: true, versionNumber: 1, treePath: "v1" } satisfies UploadDraft}
         onSuccess={handleUploadSuccess}
       />

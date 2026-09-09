@@ -361,7 +361,7 @@ type VersionRow struct {
 // When role is SYSTEM_ADMIN the content payload is never selected (content
 // access is withheld for admins; only metadata + hashes are returned).
 func (s *store) versionsByFilters(ctx context.Context, actorID, role string, f versionFilters) ([]VersionRow, error) {
-	var out []VersionRow
+	out := []VersionRow{}
 	err := s.db.withUserTx(ctx, actorID, role, func(tx pgx.Tx) error {
 		q := `
 			SELECT d.fir_number, dv.version_number, dv.sha256_hash,
@@ -556,7 +556,7 @@ func (s *store) mergeTreePathForTarget(ctx context.Context, actorID, role, docum
 // tree from a flat list. Rows are returned with exact tree_path + both parent
 // hashes for lineage tracing.
 func (s *store) versionsTreeByDocument(ctx context.Context, actorID, role, documentID string) ([]VersionRow, error) {
-	var out []VersionRow
+	out := []VersionRow{}
 	err := s.db.withUserTx(ctx, actorID, role, func(tx pgx.Tx) error {
 		q := `
 			SELECT dv.id::text, d.fir_number, dv.version_number, dv.sha256_hash,
@@ -612,7 +612,7 @@ func (s *store) versionsTreeByDocument(ctx context.Context, actorID, role, docum
 // given FIR, scoped to the actor's RLS identity. If the officer has no case
 // assignment for the FIR the RLS policies return zero rows, so nothing leaks.
 func (s *store) versionsByFir(ctx context.Context, actorID, role, fir string) ([]streamedVersion, error) {
-	var out []streamedVersion
+	out := []streamedVersion{}
 	err := s.db.withUserTx(ctx, actorID, role, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT dv.id::text, dv.document_id::text, dv.version_number, dv.tree_path::text,
@@ -633,6 +633,62 @@ func (s *store) versionsByFir(ctx context.Context, actorID, role, fir string) ([
 				return err
 			}
 			out = append(out, v)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// caseListItem is one row of the live assigned-case list (GET /api/cases).
+type caseListItem struct {
+	FirNumber      string    `json:"fir_number"`
+	Title          string    `json:"title"`
+	Classification string    `json:"classification_level"`
+	DocumentID     string    `json:"document_id"`
+	VersionCount   int       `json:"version_count"`
+	AssignedAt     time.Time `json:"assigned_at"`
+}
+
+// casesForOfficer lists every FIR the actor is assigned to, joined with its
+// document (newest document wins when a FIR has several) and running version
+// count. Scoped to the actor's RLS identity via withUserTx; a FIR the caller
+// cannot see simply never appears.
+func (s *store) casesForOfficer(ctx context.Context, actorID, role string) ([]caseListItem, error) {
+	var out []caseListItem
+	err := s.db.withUserTx(ctx, actorID, role, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT t.fir_number, t.title, t.classification_level, t.document_id,
+			       t.version_count, t.assigned_at
+			FROM (
+				SELECT DISTINCT ON (ca.fir_number)
+				       ca.fir_number,
+				       COALESCE(d.title, '')                    AS title,
+				       COALESCE(d.classification_level, '')     AS classification_level,
+				       COALESCE(d.id::text, '')                 AS document_id,
+				       COALESCE(vc.cnt, 0)                      AS version_count,
+				       ca.assigned_at
+				FROM case_assignments ca
+				LEFT JOIN documents d ON d.fir_number = ca.fir_number
+				LEFT JOIN (
+					SELECT document_id, COUNT(*) AS cnt
+					FROM document_versions
+					GROUP BY document_id
+				) vc ON vc.document_id = d.id
+				WHERE ca.user_id = $1::uuid
+				ORDER BY ca.fir_number, d.created_at DESC
+			) t
+			ORDER BY t.assigned_at DESC, t.fir_number`, actorID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c caseListItem
+			if err := rows.Scan(&c.FirNumber, &c.Title, &c.Classification,
+				&c.DocumentID, &c.VersionCount, &c.AssignedAt); err != nil {
+				return err
+			}
+			out = append(out, c)
 		}
 		return rows.Err()
 	})

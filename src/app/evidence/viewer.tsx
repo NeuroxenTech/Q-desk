@@ -18,6 +18,7 @@ import CountdownTimer from "@/components/ui/CountdownTimer";
 import VersionTree from "@/components/ui/VersionTree";
 import BranchDialog from "@/components/BranchDialog";
 import MergeDialog from "@/components/MergeDialog";
+import DownloadRequestDialog from "@/components/DownloadRequestDialog";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import SecondaryButton from "@/components/ui/SecondaryButton";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -74,6 +75,7 @@ export default function EvidenceViewer({
   const [selectedNode, setSelectedNode] = useState<VersionTreeNode | null>(null);
   const [branchOpen, setBranchOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [downloadRequestOpen, setDownloadRequestOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -789,18 +791,32 @@ export default function EvidenceViewer({
           </div>
           <div className="space-y-2 border-t border-slate-800 p-4">
             {canUploadEvidence(role) ? (
-              <PrimaryButton
-                onClick={() => setUploadOpen(true)}
-                disabled={!lastMeta?.document_id}
-                className="w-full text-sm"
-                title={
-                  lastMeta?.document_id
-                    ? "Upload a new evidence version, hash-chained to the current one"
-                    : "No document loaded yet on this stream"
-                }
-              >
-                Upload New Evidence Version
-              </PrimaryButton>
+              <>
+                <PrimaryButton
+                  onClick={() => setDownloadRequestOpen(true)}
+                  disabled={!lastMeta?.document_id}
+                  className="w-full text-sm"
+                  title={
+                    lastMeta?.document_id
+                      ? "Request a dual-approved chain-of-custody download of this document"
+                      : "No document loaded yet on this stream"
+                  }
+                >
+                  Request Download / Print
+                </PrimaryButton>
+                <PrimaryButton
+                  onClick={() => setUploadOpen(true)}
+                  disabled={!lastMeta?.document_id}
+                  className="w-full text-sm"
+                  title={
+                    lastMeta?.document_id
+                      ? "Upload a new evidence version, hash-chained to the current one"
+                      : "No document loaded yet on this stream"
+                  }
+                >
+                  Upload New Evidence Version
+                </PrimaryButton>
+              </>
             ) : (
               <SecondaryButton disabled className="w-full text-sm">
                 Uploads restricted for {role}
@@ -846,6 +862,18 @@ export default function EvidenceViewer({
         mainlineCandidates={mainlineCandidates}
         defaultTargetId={mergeDefaultTargetId}
         onSuccess={handleMergeSuccess}
+      />
+
+      <DownloadRequestDialog
+        open={downloadRequestOpen}
+        onClose={() => setDownloadRequestOpen(false)}
+        sessionId={sessionId}
+        badge={badge}
+        firNumber={firNumber}
+        documentId={lastMeta?.document_id || null}
+        onSuccess={() => {
+          setDownloadRequestOpen(false);
+        }}
       />
     </div>
   );

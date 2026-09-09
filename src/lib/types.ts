@@ -203,3 +203,94 @@ export interface UploadDraft {
   treePath?: string;
   parentSha256Hash?: string;
 }
+
+// GET /api/cases — one row of the live assigned-case list.
+export interface CaseListItem {
+  fir_number: string;
+  title: string;
+  classification_level: string;
+  document_id: string;
+  version_count: number;
+  assigned_at: string;
+}
+
+export interface CaseListResponse {
+  cases: CaseListItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Chain-of-custody download requests.
+// ---------------------------------------------------------------------------
+
+export type DownloadStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "downloaded";
+
+export interface DownloadRequest {
+  id: string;
+  document_id: string;
+  reason: string;
+  requested_by_badge: string;
+  status: DownloadStatus;
+  required_approvals: number;
+  requested_at: string;
+  expires_at: string;
+  downloaded_at?: string;
+
+  // Joined / computed fields surfaced by the backend for the Downloads UI.
+  fir_number?: string;
+  title?: string;
+  requester_name?: string;
+  approved_count: number;
+  rejected_count: number;
+}
+
+export interface DownloadApproval {
+  id: string;
+  download_request_id: string;
+  approved_by_badge: string;
+  decision: "approved" | "rejected";
+  decided_at: string;
+  signature: string;
+  approver_name?: string;
+}
+
+// POST /api/downloads/request
+export interface DownloadRequestResponse {
+  request: DownloadRequest;
+}
+
+// GET /api/downloads/pending
+export interface PendingDownloadsResponse {
+  requests: DownloadRequest[];
+}
+
+// GET /api/downloads — the Downloads page payload.
+export interface DownloadsListResponse {
+  can_approve: boolean;
+  requests: DownloadRequest[]; // this officer's own request history
+  pending: DownloadRequest[];  // awaiting a decision from this official
+}
+
+// POST /api/downloads/{id}/decide
+export interface DownloadDecideResponse {
+  request_id: string;
+  decision: "approved" | "rejected";
+  status: DownloadStatus;
+  approved_count: number;
+  rejected_count: number;
+  required_approvals: number;
+}
+
+// POST /api/downloads/{id}/execute
+export interface DownloadExecuteResponse {
+  request_id: string;
+  url: string;
+  expires_seconds: number;
+  filename: string;
+  certificate_id: string;
+  chain_valid: string;
+}

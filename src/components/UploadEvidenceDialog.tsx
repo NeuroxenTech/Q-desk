@@ -154,7 +154,8 @@ export default function UploadEvidenceDialog({
         onProgress
       );
       // Cosmetic "scanning for threats" state (real scanning is prototype-mode;
-      // the server audit row records scan_status).
+      // the server audit row records scan_status). Shown for a beat so the
+      // animated document scan reads clearly.
       setPhase("scanning");
       const scanDone = await new Promise<void>((r) => setTimeout(r, 1500));
       void scanDone;
@@ -265,29 +266,70 @@ export default function UploadEvidenceDialog({
             </div>
           )}
 
-          {(phase === "uploading" || phase === "scanning") && file && (
+          {phase === "uploading" && file && (
             <div className="space-y-3 py-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">
-                  {phase === "uploading"
-                    ? `Uploading ${file.name}`
-                    : "Scanning for threats…"}
-                </span>
-                <span className="tabular-nums text-slate-400">
-                  {phase === "uploading" ? `${progress}%` : "1.5s"}
-                </span>
+                <span className="text-slate-300">Uploading {file.name}</span>
+                <span className="tabular-nums text-slate-400">{progress}%</span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
                 <div
                   className="h-full rounded-full bg-blue-500 transition-all"
-                  style={{ width: phase === "scanning" ? "100%" : `${progress}%` }}
+                  style={{ width: `${progress}%` }}
                 />
               </div>
-              {phase === "scanning" && (
-                <p className="text-xs text-slate-500">
-                  Hashing + chain-binding the evidence copy…
-                </p>
-              )}
+            </div>
+          )}
+
+          {phase === "scanning" && file && (
+            <div className="scan-doc flex flex-col items-center gap-4 py-3">
+              <div className="relative h-44 w-60 overflow-hidden rounded-lg border border-slate-700 bg-slate-950/80 shadow-inner">
+                <div className="scan-frame absolute inset-0 rounded-lg border border-blue-500/50" />
+                <div className="relative px-3 pt-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="max-w-[16ch] truncate font-mono text-[11px] text-slate-400">
+                      {file.name}
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">
+                      scanning
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="h-1.5 w-11/12 rounded bg-slate-800" />
+                    <div className="h-1.5 w-full rounded bg-slate-800" />
+                    <div className="h-1.5 w-4/5 rounded bg-slate-800" />
+                    <div className="h-1.5 w-2/3 rounded bg-slate-800" />
+                    <div className="h-1.5 w-1/2 rounded bg-slate-800" />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-400/90">
+                      magic-byte verified
+                    </span>
+                    <span className="h-2 w-10 rounded bg-emerald-500/80" />
+                  </div>
+                </div>
+                <div className="scan-beam" />
+              </div>
+
+              <ul className="w-60 space-y-1.5 text-xs text-slate-500">
+                <li className="scan-stage flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Magic bytes matched
+                </li>
+                <li className="scan-stage flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  SHA-256 digest computed
+                </li>
+                <li className="scan-stage flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  Hashing + chain-binding…
+                </li>
+              </ul>
+
+              <p className="text-[11px] text-slate-600">
+                Prototype mode &middot; scan summary recorded in the audit trail
+                as scan_status per file.
+              </p>
             </div>
           )}
 
@@ -340,7 +382,9 @@ export default function UploadEvidenceDialog({
             <PrimaryButton onClick={onClose}>Close</PrimaryButton>
           )}
           {(phase === "uploading" || phase === "scanning") && (
-            <SecondaryButton disabled>Uploading…</SecondaryButton>
+            <SecondaryButton disabled>
+              {phase === "uploading" ? "Uploading…" : "Scanning…"}
+            </SecondaryButton>
           )}
           {phase === "ticket" && (
             <SecondaryButton disabled>Requesting…</SecondaryButton>
